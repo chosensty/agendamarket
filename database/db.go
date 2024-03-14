@@ -22,13 +22,13 @@ func GetStockPrice(db *sql.DB, stock_name string) float64 {
 	return price
 }
 
-func ReturnStock(db *sql.DB, input string) string {
+func ReturnStock(db *sql.DB, input string) [][]string {
 	query := `SELECT name, price, total_shares FROM Stock`
 
 	var name string
 	var price string
 	var total_shares string
-	response := ""
+  var stocks_slice [][]string
 	if input == "*" || input == "all" {
 		rows, err := db.Query(query)
 
@@ -40,16 +40,20 @@ func ReturnStock(db *sql.DB, input string) string {
 			if err != nil {
 				log.Println(err)
 			}
-			response += name + " stock is currently worth $" + price + " per share.\n"
+      price_float, _ := strconv.ParseFloat(price, 64)
+      price_float = RoundFloat(price_float, 2)
+      price_string := strconv.FormatFloat(price_float, 'f', 2, 64)
+      slice := []string{name, price_string}
+      stocks_slice = append(stocks_slice, slice)
 		}
 	} else if StockExists(db, input) {
 		price := GetStockPrice(db, input)
-		price_string := strconv.FormatFloat(price, 'f', 2, 64)
-		response = input + " stock is currently worth $" + price_string + " per share.\n"
+		price_string := strconv.FormatFloat(RoundFloat(price, 2), 'f', 2, 64)
+    stocks_slice = [][]string{{input, price_string}}
 	} else {
-		response = "Could not find stock \"" + input + "\""
+    stocks_slice = [][]string{{"unknown", "unknown"}}
 	}
-	return response
+	return stocks_slice
 }
 func NewUser(db *sql.DB, ID string) bool {
 	query := "INSERT INTO User VALUES (1000, ?)"
@@ -82,8 +86,11 @@ func GetUserShares(db *sql.DB, userID string, stock_name string) float64 {
 	return shares
 }
 func RemoveUserShares(db *sql.DB, userID string, stock_name string) bool {
-	query := `DELETE FROM UserStock WHERE stockName=? AND userID=?`
+	query := `DELETE FROM UserStocks WHERE stockName=? AND userID=?`
 	_, err := db.Exec(query, stock_name, userID)
+  if err != nil {
+    log.Print(err)
+  }
 	return err == nil
 }
 
@@ -135,7 +142,9 @@ func StockTransaction(db *sql.DB, userID string, name string, price string, sign
 
 	bal_change := PreciseMult(price_float, converted_sign)
 
-	bal_change = bal_change / (1 - tax)
+  if converted_sign == -1 {
+    bal_change *= 1 - tax
+  }
 
 	new_balance := PreciseSub(balance, bal_change)
 
@@ -155,6 +164,10 @@ func StockTransaction(db *sql.DB, userID string, name string, price string, sign
 	sens, _ := strconv.ParseFloat(os.Getenv("global_sensitivity"), 64)
 
 	share_num := PreciseDiv(price_float, orig_price)
+
+  if converted_sign ==1 {
+    share_num /= 1 + tax
+  }
 
 	user_shares := GetUserShares(db, userID, name)
 	if user_shares == -1.0 {
@@ -176,7 +189,8 @@ func StockTransaction(db *sql.DB, userID string, name string, price string, sign
 	query = `UPDATE UserStocks SET shares=? WHERE userID=? AND stockName=?`
 
 	_, err := db.Exec(query, user_shares, userID, name)
-	if RoundFloat(value, 2) == 0 {
+  log.Print(RoundFloat(user_shares, 2))
+	if RoundFloat(user_shares, 2) == 0 {
 		RemoveUserShares(db, userID, name)
 	}
 	if err != nil {
@@ -263,9 +277,11 @@ func UserList(db *sql.DB, userID string) string {
 	query := "SELECT stockName, shares FROM UserStocks WHERE userID=?"
 	data, err := db.Query(query, userID)
 	if err != nil {
+    log.Print(err)
 		if err == sql.ErrNoRows {
 			return "You have not invested into any stocks."
 		} else {
+      log.Print(err)
 			return "Error occured."
 		}
 	}
