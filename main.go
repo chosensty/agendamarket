@@ -44,7 +44,6 @@ func main() {
 	}
   // initialising database
 	database := db.Init()
-	//	db.FindRow(database, "luffy")
 	helpFileBytes, err := os.ReadFile("./src/help.json")
 	if err != nil {
 		log.Fatal(err)
@@ -59,13 +58,20 @@ func main() {
 		log.Fatal(err)
 	}
 
-	helpMessage := ""
+  // creating a list filled with each embed field.
+  var help_fields []*discordgo.MessageEmbedField
 
-	for _, e := range helpSlice {
-		helpMessage += e.Command + ": " + e.Format + "\n"
-	}
-	helpMessage += "A deeper explanation of each command can be accessed using !jdl help <command name>"
+  for _, e := range helpSlice {
+    field := &discordgo.MessageEmbedField{
+      Name:  e.Command,
+      Value: e.Format,
+    }
+    help_fields = append(help_fields, field)
+  }
 
+  help_embed := &discordgo.MessageEmbed{}
+  help_embed.Fields = help_fields	
+  help_embed.Title = "Command Master List"
   // initialising every button type.
 	yes_button := discordgo.Button{
 		Label:    "Yes",
@@ -103,7 +109,7 @@ func main() {
 		}
     // printing the content of the message to the console.
 		fmt.Println(m.Content)
-
+    // making a stock list
 		full_stock_list := db.ReturnStock(database, "*")
 		sort.Slice(full_stock_list, func(i, j int) bool {
 			item1, _ := strconv.ParseFloat(full_stock_list[i][1], 64)
@@ -406,6 +412,9 @@ func main() {
 					fieldsperembed := 10
 					stock_length := len(stock_list)
 					max_index := stock_length/fieldsperembed + 1
+
+
+          // creating a list filled with each embed field.
 					var all_fields []*discordgo.MessageEmbedField
 					for _, e := range stock_list {
 						field := &discordgo.MessageEmbedField{
@@ -414,11 +423,14 @@ func main() {
 						}
 						all_fields = append(all_fields, field)
 					}
+
+          // creating the message object consisting of the embeds and the buttons.
 					msg := discordgo.MessageSend{
 						Components: []discordgo.MessageComponent{
 							lr_button_row,
 						},
 					}
+          // making a list of each page.
 					lower_index := current_index * fieldsperembed
 					upper_index := (current_index + 1) * fieldsperembed
 					if upper_index >= stock_length {
@@ -426,21 +438,26 @@ func main() {
 					}
 					embed.Fields = all_fields[lower_index:upper_index]
 					msg.Embeds = append(msg.Embeds, embed)
-
+          // sending the message using "SendComplex" in order to have the option to edit the message everytime someone changes the page.
 					reply, err := s.ChannelMessageSendComplex(m.ChannelID, &msg)
 					if err != nil {
 						log.Print(err)
 					}
+
+          // button handler for the right left buttons.
 					buttonHandler := sess.AddHandler(
 						func(button_s *discordgo.Session, button_i *discordgo.InteractionCreate) {
+              // checking if the button pressed was both from the right message and the right user.
 							if button_i.Message.ID == reply.ID &&
 								m.Author.ID == button_i.Member.User.ID {
 								CustomID := button_i.MessageComponentData().CustomID
+                // if the left arrow was pressed, go the the previous page.
 								if CustomID == "left" {
 									current_index -= 1
 									if current_index < 0 {
 										current_index = max_index - 1
 									}
+                // if the right arrow was pressed, go to the next page.
 								} else if CustomID == "right" {
 									current_index = (current_index + 1) % max_index
 								}
@@ -449,7 +466,7 @@ func main() {
 								if upper_index >= stock_length {
 									upper_index = stock_length
 								}
-
+                // editing the embed when the button was pressed.
 								embed.Fields = all_fields[lower_index:upper_index]
 								resp := discordgo.InteractionResponse{
 									Type: discordgo.InteractionResponseUpdateMessage,
@@ -471,24 +488,24 @@ func main() {
 					time.AfterFunc(60*time.Second, func() {
 						buttonHandler()
 					})
+          // if a specific stock was searched for, only the stock that was requested is returned to the user.
 				} else if db.StockExists(database, args[2]) {
 					price := db.GetStockPrice(database, args[2])
 					s.ChannelMessageSend(m.ChannelID, args[2]+" stock is worth $"+strconv.FormatFloat(price, 'f', 2, 64)+" per share")
 				}
 
 			case "networth":
+        // getting the networth and sending it to the user.
 				response := db.GetNetWorth(database, m.Author.ID)
 				s.ChannelMessageSend(m.ChannelID, response)
 			case "help":
-				response := helpMessage
-				if len(args) > 2 {
-					for _, e := range helpSlice {
-						if e.Command == args[2] {
-							response = e.Explanation
-						}
-					}
-				}
-				s.ChannelMessageSend(m.ChannelID, "``"+response+"``")
+        // generating a help message and sending it.
+        msg := discordgo.MessageSend{
+          Embeds: []*discordgo.MessageEmbed{
+            help_embed,
+          },
+        }
+				s.ChannelMessageSendComplex(m.ChannelID, &msg)
 			}
 		}
 	})
