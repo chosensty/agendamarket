@@ -136,7 +136,7 @@ func main() {
 						if cond {
 							s.ChannelMessageSend(
 								m.ChannelID,
-								"Add new stock "+args[2]+" with a base price of "+args[3],
+								"Add new stock "+args[2]+" with a base price of $"+args[3],
 							)
 						}
 					}
@@ -144,7 +144,7 @@ func main() {
 			case "remove":
 				if m.Author.ID == os.Getenv("ADMIN") && len(args) > 2 {
 					if db.RemoveStock(database, args[2]) {
-						s.ChannelMessageSend(m.ChannelID, "Remove stock "+args[2])
+						s.ChannelMessageSend(m.ChannelID, "Removed stock "+args[2])
 					}
 				}
 			case "balance":
