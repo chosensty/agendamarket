@@ -1,36 +1,36 @@
 [
     {
-      "command":"start",
+      "command":"Start investing",
       "format":"!jdl start",
       "explanation":"Registers you as a new user, you will start with $1000 and no shares of any stock. This command can only be run once."
     },
     {
-        "command" : "buy",
+        "command" : "Buy shares",
         "format" : "!jdl buy <stock name> <number of shares>",
         "explanation" : "Purchases a given number of shares of a stock provided you have enough in your balance. \nHint: you can add a $ sign in front of the number of shares to specificy how much money you'd like to invest into a stock, rather than specifying the number of shares that you'd like to buy."
     },
     {
-        "command" : "sell",
+        "command" : "Sell shares",
         "format": " !jdl sell <stock name> <number of shares>",
         "explanation" : "Sells a given number of shares of a stock provided that you have enough shares.\nHint: you can add a $ sign in front of the number of shares to specificy how much money you'd like to sell for, rather than specifying the number of shares that you'd like to sell."
     },
     {
-        "command":"status",
-        "format":"!jdl status <stock name>",
+        "command":"View the current state of the market",
+        "format":"!jdl shares <stock name>",
         "explanation":"Replies with the current value of a given stock per share. Not specifying a share will result in replying with all of the share values."
     },
     {
-        "command":"list",
+        "command":"List all of the stocks that you own",
         "format":"!jdl list",
         "explanation":"Lists all of the stocks that you've invested into."
     },
     {
-        "command":"balance",
+        "command":"View your balance",
         "format":"!jdl balance",
         "explanation":"Replies with your current balance"
     },
     {
-        "command":"networth",
+        "command":"View your networth",
         "format":"!jdl networth",
         "explanation":"Returns your current networth, which is calculated by adding the value of all of your shares with your current balance."
     }

@@ -1,5 +1,6 @@
 package main
 
+// imports
 import (
 	"encoding/json"
 	"fmt"
@@ -12,28 +13,36 @@ import (
 	"strings"
 	"syscall"
 	"time"
-
+  _ "github.com/go-sql-driver/mysql"
 	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
 )
 
+// prefix for each command
 const prefix string = "!jdl"
 
+
+// help struct for each command
 type Help struct {
 	Command     string
 	Format      string
 	Explanation string
 }
 
-func main() {
+func main() { 
+  // loading the database
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("couldn't load .env file")
 	}
+
+
+  // initiating the bot using the token
 	sess, err := discordgo.New("Bot " + os.Getenv(("TOKEN")))
 	if err != nil {
 		log.Fatal(err)
 	}
+  // initialising database
 	database := db.Init()
 	//	db.FindRow(database, "luffy")
 	helpFileBytes, err := os.ReadFile("./src/help.json")
@@ -41,6 +50,7 @@ func main() {
 		log.Fatal(err)
 	}
 
+  // getting the information for every command from the JSON file.
 	var helpSlice []Help
 
 	err = json.Unmarshal(helpFileBytes, &helpSlice)
@@ -56,6 +66,7 @@ func main() {
 	}
 	helpMessage += "A deeper explanation of each command can be accessed using !jdl help <command name>"
 
+  // initialising every button type.
 	yes_button := discordgo.Button{
 		Label:    "Yes",
 		Style:    discordgo.SuccessButton,
@@ -67,6 +78,7 @@ func main() {
 		Style:    discordgo.DangerButton,
 		CustomID: "no_button",
 	}
+
 	yn_button_row := discordgo.ActionsRow{
 		Components: []discordgo.MessageComponent{yes_button, no_button},
 	}
@@ -81,11 +93,15 @@ func main() {
 	lr_button_row := discordgo.ActionsRow{
 		Components: []discordgo.MessageComponent{left_button, right_button},
 	}
+
 	tax, _ := strconv.ParseFloat(os.Getenv("TAX"), 64)
+  // creating an event handler for messages received.
 	sess.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
+    // ignoring the message if it was sent by the bot.
 		if m.Author.ID == s.State.User.ID {
 			return
 		}
+    // printing the content of the message to the console.
 		fmt.Println(m.Content)
 
 		full_stock_list := db.ReturnStock(database, "*")
@@ -97,10 +113,14 @@ func main() {
 
 		args := strings.Split(m.Content, " ")
 
-		if args[0] != prefix {
+		
+    // ignoring the content of the message if the command wasn't used.
+    if args[0] != prefix {
 			return
 		}
+    
 		if len(args) > 1 {
+      // dealing with every command type.
 			switch args[1] {
 			case "new":
 				if m.Author.ID == os.Getenv("ADMIN") && len(args) > 3 {
@@ -125,14 +145,14 @@ func main() {
 				bal := db.BalCheck(database, m.Author.ID)
 				s.ChannelMessageSend(
 					m.ChannelID,
-					"Your current balance is "+strconv.FormatFloat(bal, 'f', 2, 64),
+					"Your current balance is $"+strconv.FormatFloat(bal, 'f', 2, 64),
 				)
 			case "start":
 				exists := db.UserExists(database, m.Author.ID)
 				if exists {
 					s.ChannelMessageSend(m.ChannelID, "You have already registered")
 				} else {
-					err := db.NewUser(database, m.Author.ID)
+					err := db.NewUser(database, m.Author.ID, 1000, 10)
 					if !err {
 						s.ChannelMessageSend(m.ChannelID, "You have been registered")
 					} else {
@@ -189,12 +209,10 @@ func main() {
 							log.Print(err)
 						}
 
-						decided := false
 						buttonHandler := sess.AddHandler(
 							func(button_s *discordgo.Session, button_i *discordgo.InteractionCreate) {
-								if button_i.Message.ID == reply.ID &&
-									m.Author.ID == button_i.Member.User.ID &&
-									!decided {
+                log.Print(m.Author.ID)
+								if button_i.Message.ID == reply.ID && m.Author.ID == button_i.Member.User.ID {
 									custom_id := button_i.MessageComponentData().CustomID
 									content := "Error occured."
 									if custom_id == "yes_button" {
@@ -209,18 +227,20 @@ func main() {
 									} else if custom_id == "no_button" {
 										content = "Cancelled stock purchase."
 									}
+                  // creating the response
+
 									resp := discordgo.InteractionResponse{
 										Type: discordgo.InteractionResponseUpdateMessage,
 										Data: &discordgo.InteractionResponseData{
 											Content: content,
 										},
 									}
+                  // responding while also checking for a potential error.
 									err := button_s.InteractionRespond(button_i.Interaction, &resp)
 
 									if err != nil {
 										log.Println(err)
 									}
-									decided = true
 								}
 							},
 						)
@@ -234,13 +254,21 @@ func main() {
 					}
 				}
 			case "sell":
+        // checking if enough arguments have been given in the command.
 				if len(args) >= 4 {
+          // checking if the given stock exists
 					if db.StockExists(database, args[2]) {
+            // setting stock name to the argument
 						stock_name := args[2]
+            // initialising the investment variable.
 						investment := -1.0
+            // money_symbol is set to "$"
 						var money_symbol string = "$"
+            // checking if the user specified $.
 						first_char := args[3][0]
+            // checking if the money symbol was the first character
 						if string(first_char) == money_symbol {
+              // if so, get the floating point of the rest of the string
 							value, err := strconv.ParseFloat(args[3][1:], 64)
 							if err != nil {
 								s.ChannelMessageSend(
@@ -250,19 +278,23 @@ func main() {
 							} else {
 								investment = value
 							}
+              // if the user has chosen to sell all of their stocks, then the investment is calculated.
 						} else if args[3] == "all" {
 							stock_value := db.GetStockPrice(database, stock_name)
 							total_shares := db.GetUserShares(database, m.Author.ID, stock_name)
 							investment = db.PreciseMult(stock_value, total_shares)
 						} else {
+              // the stock value is calculated and initialised into stock_value for all other inputs
 							stock_value := db.GetStockPrice(database, stock_name)
 							value, err := strconv.ParseFloat(args[3], 64)
+              // checking for an error, if there is no error the investment is updated.
 							if err != nil {
 								s.ChannelMessageSend(m.ChannelID, "Please input in the correct format.")
 							} else {
 								investment = db.PreciseMult(value, stock_value)
 							}
 						}
+            // if the investment is valid (not == -1) then it is converted into a string 
 						if investment != -1.0 {
 							investment_string := strconv.FormatFloat(investment, 'f', 2, 64)
 							investment_aftertax := strconv.FormatFloat(
@@ -286,13 +318,19 @@ func main() {
 							}
 
 							decided := false
+
+
+              // the event handler for the message that was just sent, waits for the response of the user.
 							buttonHandler := sess.AddHandler(
+                // function initialisation
 								func(button_s *discordgo.Session, button_i *discordgo.InteractionCreate) {
-									if button_i.Message.ID == reply.ID &&
-										m.Author.ID == button_i.Member.User.ID &&
-										!decided {
+                  // checks to see if the message ID and the button ID are of the message that was just sent.
+									if button_i.Message.ID == reply.ID && m.Author.ID == button_i.Member.User.ID && !decided {
+                    // getting the ID of the button which was pressed. 
 										custom_id := button_i.MessageComponentData().CustomID
+                    // Initialising content as "error occured", although it will likely change.
 										content := "Error occured."
+                    // if custom ID == yes, the user wants to buy, so the transaction method is called from db..
 										if custom_id == "yes_button" {
 											_, content = db.StockTransaction(
 												database,
@@ -303,14 +341,17 @@ func main() {
 												tax,
 											)
 										} else if custom_id == "no_button" {
+                      // cancelling the stock sale if the no button is pressed
 											content = "Cancelled stock sale."
 										}
+                    // generating the response variable. 
 										resp := discordgo.InteractionResponse{
 											Type: discordgo.InteractionResponseUpdateMessage,
 											Data: &discordgo.InteractionResponseData{
 												Content: content,
 											},
 										}
+                    // responding to the interaction.
 										err := button_s.InteractionRespond(
 											button_i.Interaction,
 											&resp,
@@ -319,6 +360,7 @@ func main() {
 										if err != nil {
 											log.Println(err)
 										}
+
 										decided = true
 									}
 								},
@@ -330,109 +372,16 @@ func main() {
 							})
 						}
 					} else {
+            // responding if the stock doesn't exist.
 						s.ChannelMessageSend(m.ChannelID, `"`+args[2]+`" stock does not exist.`)
 					}
 				}
-				/*
-				          case "buy":
-				            if db.StockExists(database, args[3]) {
-
-				              msg := discordgo.MessageSend{
-				                Content: "Are you sure you'd like to invest $" + args[4] + " into " + args[3] + " stocks?",
-				                Components: []discordgo.MessageComponent{
-				                  yn_button_row,
-				                },
-				                Reference: m.Reference(),
-				              }
-				              reply, err := s.ChannelMessageSendComplex(m.ChannelID, &msg)
-
-				              if err != nil {
-				                log.Print(err)
-				              }
-
-				              decided := false
-				              buttonHandler := sess.AddHandler(func(button_s *discordgo.Session, button_i *discordgo.InteractionCreate) {
-				                if button_i.Message.ID == reply.ID && m.Author.ID == button_i.Member.User.ID && !decided {
-				                  custom_id := button_i.MessageComponentData().CustomID
-				                  content := "Error occured."
-				                  if custom_id == "yes_button" {
-				                    _, content = db.StockTransaction(database, m.Author.ID, args[3], args[4], 1)
-				                  } else if custom_id == "no_button" {
-				                    content = "Cancelled stock purchase."
-				                  }
-				                  resp := discordgo.InteractionResponse{
-				                    Type: discordgo.InteractionResponseUpdateMessage,
-				                    Data: &discordgo.InteractionResponseData{
-				                      Content: content,
-				                    },
-				                  }
-				                  err := button_s.InteractionRespond(button_i.Interaction, &resp)
-
-				                  if err != nil {
-				                    log.Println(err)
-				                  }
-				                  decided = true
-				                }
-				              })
-				              // Set a timer to stop listening after a specific amount of time (e.g., 30 seconds)
-				              time.AfterFunc(60*time.Second, func() {
-				                buttonHandler()
-				              })
-
-				            }
-				          case "sell":
-				            if db.StockExists(database, args[3]) {
-				              msg := discordgo.MessageSend{
-				                Content: "Are you sure you'd like to sell $" + args[4] + " worth of " + args[3] + " stocks?",
-				                Components: []discordgo.MessageComponent{
-				                  yn_button_row,
-				                },
-				                Reference: m.Reference(),
-				              }
-				              reply, err := s.ChannelMessageSendComplex(m.ChannelID, &msg)
-
-				              if err != nil {
-				                log.Print(err)
-				              }
-
-				              decided := false
-				              buttonHandler := sess.AddHandler(func(button_s *discordgo.Session, button_i *discordgo.InteractionCreate) {
-				                if button_i.Message.ID == reply.ID && m.Author.ID == button_i.Member.User.ID && !decided {
-				                  custom_id := button_i.MessageComponentData().CustomID
-				                  content := "error occured."
-
-				                  if custom_id == "yes_button" {
-				                    _, content = db.StockTransaction(database, m.Author.ID, args[3], args[4], -1)
-
-				                  } else if custom_id == "no_button" {
-				                    content = "cancelled stock sale."
-				                  }
-
-				                  resp := discordgo.InteractionResponse{
-				                    Type: discordgo.InteractionResponseUpdateMessage,
-				  log.Print(response)
-				                    Data: &discordgo.InteractionResponseData{
-				                      Content: content,
-				                    },
-				                  }
-				                  err := button_s.InteractionRespond(button_i.Interaction, &resp)
-
-				                  if err != nil {
-				                    log.Println(err)
-				                  }
-				                  decided = true
-				                }
-				              })
-
-				              // Set a timer to stop listening after a specific amount of time (e.g., 30 seconds)
-				              time.AfterFunc(60*time.Second, func() {
-				                buttonHandler()
-				              })
-
-				            }
-				*/
-			case "status":
-
+      case "list":
+        message := db.UserList(database, m.Author.ID)
+        if message == "" {
+          message = "You do not currently own any stocks."
+        }
+        s.ChannelMessageSend(m.ChannelID, message)
 			case "shares":
 				var stock_list [][]string
 

@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"strconv"
-
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/joho/godotenv"
 	"github.com/shopspring/decimal"
@@ -17,7 +16,7 @@ func GetStockPrice(db *sql.DB, stock_name string) float64 {
 	var price float64
 	err := db.QueryRow(query, stock_name).Scan(&price)
 	if err != nil {
-		return -1.0
+   	return -1.0
 	}
 	return price
 }
@@ -55,10 +54,10 @@ func ReturnStock(db *sql.DB, input string) [][]string {
 	}
 	return stocks_slice
 }
-func NewUser(db *sql.DB, ID string) bool {
-	query := "INSERT INTO User VALUES (1000, ?)"
+func NewUser(db *sql.DB, ID string, starting_bal float64, stock_tokens float64) bool {
+	query := "INSERT INTO User VALUES (?, ?, ?)"
 	fmt.Println(query)
-	_, err := db.Exec(query, ID)
+	_, err := db.Exec(query, starting_bal, ID, stock_tokens)
 
 	if err != nil {
 		log.Print(err)
@@ -136,10 +135,19 @@ func StockTransaction(db *sql.DB, userID string, name string, price string, sign
 		return false, "You have not registered an account."
 	}
 
-	price_float, _ := strconv.ParseFloat(price, 64)
+  // getting a floating point version of the price string.
+	price_float, err := strconv.ParseFloat(price, 64)
 
+  if err != nil {
+    log.Print(err)
+    return false, "Error occured while converting your money"
+  }
+
+  // sign == 1 when buying and -1 when selling. Multiplying by the following float allows you to do the correct math
+  // for whichever transaction is required. 
 	converted_sign := float64(sign)
 
+  // the change in balance is represented by the price of the transaction multiplied by the balance change.
 	bal_change := PreciseMult(price_float, converted_sign)
 
   if converted_sign == -1 {
@@ -164,10 +172,7 @@ func StockTransaction(db *sql.DB, userID string, name string, price string, sign
 	sens, _ := strconv.ParseFloat(os.Getenv("global_sensitivity"), 64)
 
 	share_num := PreciseDiv(price_float, orig_price)
-
-  if converted_sign ==1 {
-    share_num /= 1 + tax
-  }
+  if converted_sign ==1 { share_num /= 1 + tax }
 
 	user_shares := GetUserShares(db, userID, name)
 	if user_shares == -1.0 {
@@ -183,12 +188,12 @@ func StockTransaction(db *sql.DB, userID string, name string, price string, sign
 	user_shares = PreciseAdd(user_shares, PreciseMult(share_num, converted_sign))
 
 	if RoundFloat(user_shares, 2) > 10 {
-		return false, "You can not own more than 10 shares."
+		return false, "You can not own more than 10 shares of the same stock."
 	}
 
 	query = `UPDATE UserStocks SET shares=? WHERE userID=? AND stockName=?`
 
-	_, err := db.Exec(query, user_shares, userID, name)
+	_, err = db.Exec(query, user_shares, userID, name)
   log.Print(RoundFloat(user_shares, 2))
 	if RoundFloat(user_shares, 2) == 0 {
 		RemoveUserShares(db, userID, name)
@@ -296,7 +301,6 @@ func UserList(db *sql.DB, userID string) string {
 			fmt.Println(err)
 		}
 		response += "You own " + strconv.FormatFloat(shares, 'f', 2, 64) + " " + name + " stocks\n"
-		fmt.Println(name)
 	}
 
 	return response
@@ -372,6 +376,7 @@ func NewStock(db *sql.DB, stock_name string, base_price float64) bool {
 	_, err := db.Exec(query, stock_name, base_price, 10000)
 	if err != nil {
 		log.Println("Couldn't create new stock.")
+    log.Print(err);
 	}
 
 	return true
@@ -383,10 +388,6 @@ func Init() *sql.DB {
 		log.Fatal("couldn't load .env file")
 	}
 	db, err := sql.Open("mysql", os.Getenv("DSN"))
-	if err != nil {
-		log.Fatalf("failed to connect: %v", err)
-	}
-
-	log.Println("Successfully connected to PlanetScale!")
+ 	log.Println("Successfully connected to Database!")
 	return db
 }
