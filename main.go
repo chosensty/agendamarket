@@ -39,7 +39,7 @@ func main() {
 
   // initiating the bot using the token
 	sess, err := discordgo.New("Bot " + os.Getenv(("TOKEN")))
-	if err != nil {
+	if err != nil{
 		log.Fatal(err)
 	}
   // initialising database
