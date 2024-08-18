@@ -54,10 +54,10 @@ func ReturnStock(db *sql.DB, input string) [][]string {
 	}
 	return stocks_slice
 }
-func NewUser(db *sql.DB, ID string, starting_bal float64, stock_tokens float64) bool {
-	query := "INSERT INTO User VALUES (?, ?, ?)"
+func NewUser(db *sql.DB, ID string, starting_bal float64) bool {
+	query := "INSERT INTO User VALUES (?, ?)"
 	fmt.Println(query)
-	_, err := db.Exec(query, starting_bal, ID, stock_tokens)
+	_, err := db.Exec(query, starting_bal, ID)
 
 	if err != nil {
 		log.Print(err)
@@ -74,6 +74,7 @@ func GetUserShares(db *sql.DB, userID string, stock_name string) float64 {
 			query = `INSERT INTO UserStocks (userID, stockName, shares) VALUES (?, ?, ?)`
 			_, err2 := db.Exec(query, userID, stock_name, 0.0)
 			if err2 != nil {
+        log.Println(err2)
 				return -1.0
 			} else {
 				return 0.0
@@ -157,7 +158,7 @@ func StockTransaction(db *sql.DB, userID string, name string, price string, sign
 	new_balance := PreciseSub(balance, bal_change)
 
 	if RoundFloat(new_balance, 2) < 0 {
-		return false, "You do not have enough funds to complete this purchase."
+		return false, "I don't think you have the facilities for that big man."
 	}
 
 	new_balance = RoundFloat(new_balance, 2)

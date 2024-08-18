@@ -149,16 +149,20 @@ func main() {
 				}
 			case "balance":
 				bal := db.BalCheck(database, m.Author.ID)
-				s.ChannelMessageSend(
-					m.ChannelID,
-					"Your current balance is $"+strconv.FormatFloat(bal, 'f', 2, 64),
-				)
+        if bal >= 0 {
+          s.ChannelMessageSend(
+            m.ChannelID,
+            "Your current balance is $"+strconv.FormatFloat(bal, 'f', 2, 64),
+          )
+        } else {
+          s.ChannelMessageSend(m.ChannelID, "Please register as a new user using the command ```!jdl start```")
+        }
 			case "start":
 				exists := db.UserExists(database, m.Author.ID)
 				if exists {
 					s.ChannelMessageSend(m.ChannelID, "You have already registered")
 				} else {
-					err := db.NewUser(database, m.Author.ID, 1000, 10)
+					err := db.NewUser(database, m.Author.ID, 1000)
 					if !err {
 						s.ChannelMessageSend(m.ChannelID, "You have been registered")
 					} else {
@@ -170,12 +174,12 @@ func main() {
 				if len(args) >= 4 {
 					if db.StockExists(database, args[2]) {
 						stock_name := args[2]
-						var total_investment float64
+						var total_investment float64 = -1.0
 						var money_symbol string = "$"
 						first_char := args[3][0]
 						if string(first_char) == money_symbol {
 							value, err := strconv.ParseFloat(args[3][1:], 64)
-							if err != nil {
+							if err != nil || value < 0.1 {
 								s.ChannelMessageSend(
 									m.ChannelID,
 									"Please input in the correct format.",
@@ -186,12 +190,13 @@ func main() {
 						} else {
 							stock_value := db.GetStockPrice(database, stock_name)
 							value, err := strconv.ParseFloat(args[3], 64)
-							if err != nil {
+							if err != nil || value < 0.1{
 								s.ChannelMessageSend(m.ChannelID, "Please input in the correct format.")
 							} else {
 								total_investment = value * stock_value
 							}
 						}
+            if total_investment != -1.0 {
 						investment := total_investment * (1 + tax)
 
 						investment_string := strconv.FormatFloat(investment, 'f', 2, 64)
@@ -255,14 +260,15 @@ func main() {
 						time.AfterFunc(60*time.Second, func() {
 							buttonHandler()
 						})
+            }
 					} else {
 						s.ChannelMessageSend(m.ChannelID, `"`+args[2]+`" stock does not exist.`)
 					}
+          
 				}
 			case "sell":
         // checking if enough arguments have been given in the command.
 				if len(args) >= 4 {
-          // checking if the given stock exists
 					if db.StockExists(database, args[2]) {
             // setting stock name to the argument
 						stock_name := args[2]
@@ -276,7 +282,7 @@ func main() {
 						if string(first_char) == money_symbol {
               // if so, get the floating point of the rest of the string
 							value, err := strconv.ParseFloat(args[3][1:], 64)
-							if err != nil {
+							if err != nil || value < 0.1{
 								s.ChannelMessageSend(
 									m.ChannelID,
 									"Please input in the correct format.",
@@ -294,7 +300,7 @@ func main() {
 							stock_value := db.GetStockPrice(database, stock_name)
 							value, err := strconv.ParseFloat(args[3], 64)
               // checking for an error, if there is no error the investment is updated.
-							if err != nil {
+							if err != nil || value < 0.1{
 								s.ChannelMessageSend(m.ChannelID, "Please input in the correct format.")
 							} else {
 								investment = db.PreciseMult(value, stock_value)
@@ -381,6 +387,7 @@ func main() {
             // responding if the stock doesn't exist.
 						s.ChannelMessageSend(m.ChannelID, `"`+args[2]+`" stock does not exist.`)
 					}
+          
 				}
       case "list":
         message := db.UserList(database, m.Author.ID)
@@ -507,7 +514,14 @@ func main() {
         }
 				s.ChannelMessageSendComplex(m.ChannelID, &msg)
 			}
-		}
+		} else {
+      msg := discordgo.MessageSend{
+        Embeds: []*discordgo.MessageEmbed{
+          help_embed,
+        },
+      }
+      s.ChannelMessageSendComplex(m.ChannelID, &msg)
+    }
 	})
 
 	sess.Identify.Intents = discordgo.IntentsAllWithoutPrivileged
