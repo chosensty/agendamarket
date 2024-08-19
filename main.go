@@ -4,7 +4,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	db "go-discord-bot/database"
+	db "agendamarket/database"
+  "agendamarket/formatcheck"
 	"log"
 	"os"
 	"os/signal"
@@ -61,6 +62,8 @@ func main() {
   // creating a list filled with each embed field.
   var help_fields []*discordgo.MessageEmbedField
 
+
+  // creating the help fields.
   for _, e := range helpSlice {
     field := &discordgo.MessageEmbedField{
       Name:  e.Command,
@@ -69,10 +72,14 @@ func main() {
     help_fields = append(help_fields, field)
   }
 
+  // help embed
   help_embed := &discordgo.MessageEmbed{}
   help_embed.Fields = help_fields	
   help_embed.Title = "Command Master List"
+
+  
   // initialising every button type.
+  // yes button
 	yes_button := discordgo.Button{
 		Label:    "Yes",
 		Style:    discordgo.SuccessButton,
@@ -120,6 +127,7 @@ func main() {
 		args := strings.Split(m.Content, " ")
 
 		
+    args[0] = strings.ToLower(args[0])
     // ignoring the content of the message if the command wasn't used.
     if args[0] != prefix {
 			return
@@ -171,31 +179,39 @@ func main() {
 				}
 
 			case "buy":
-				if len(args) >= 4 {
-					if db.StockExists(database, args[2]) {
+        // checking of the format is valid
+        response, valid := formatcheck.CheckFormat("buy", args, database)
+      
+        // if the format is valid, the transaction is attempted.
+				if valid {
+            // extracting the stock name, the value given and the investment.
 						stock_name := args[2]
 						var total_investment float64 = -1.0
 						var money_symbol string = "$"
 						first_char := args[3][0]
+
+            // if the investment is specified in dollars, the value is extracted from after the first character of the fourth argument.
 						if string(first_char) == money_symbol {
 							value, err := strconv.ParseFloat(args[3][1:], 64)
-							if err != nil || value < 0.1 {
-								s.ChannelMessageSend(
-									m.ChannelID,
-									"Please input in the correct format.",
-								)
+							if err != nil {
+                log.Println(err)
 							} else {
-								total_investment = value
-							}
+                total_investment = value
+              }
+
 						} else {
+              // otherwise, the stock value is extracted by multiplying the stock value
 							stock_value := db.GetStockPrice(database, stock_name)
 							value, err := strconv.ParseFloat(args[3], 64)
-							if err != nil || value < 0.1{
-								s.ChannelMessageSend(m.ChannelID, "Please input in the correct format.")
+							if err != nil {
+						    log.Println(err)	
 							} else {
 								total_investment = value * stock_value
 							}
+
 						}
+
+            // if the total investment is something valid (which will not be -1), the transaction goes forward.
             if total_investment != -1.0 {
 						investment := total_investment * (1 + tax)
 
@@ -261,56 +277,46 @@ func main() {
 							buttonHandler()
 						})
             }
-					} else {
-						s.ChannelMessageSend(m.ChannelID, `"`+args[2]+`" stock does not exist.`)
-					}
-          
-				}
+				} else {
+          s.ChannelMessageSend(m.ChannelID, response)
+        }
 			case "sell":
-        // checking if enough arguments have been given in the command.
-				if len(args) >= 4 {
-					if db.StockExists(database, args[2]) {
-            // setting stock name to the argument
+        // checking of the format is valid
+        response, valid := formatcheck.CheckFormat("sell", args, database)
+      
+        // if the format is valid, the transaction is attempted.
+				if valid {
+            // extracting the stock name, the value given and the investment.
 						stock_name := args[2]
-            // initialising the investment variable.
-						investment := -1.0
-            // money_symbol is set to "$"
+						var total_investment float64 = -1.0
 						var money_symbol string = "$"
-            // checking if the user specified $.
 						first_char := args[3][0]
-            // checking if the money symbol was the first character
+
+            // if the investment is specified in dollars, the value is extracted from after the first character of the fourth argument.
 						if string(first_char) == money_symbol {
-              // if so, get the floating point of the rest of the string
 							value, err := strconv.ParseFloat(args[3][1:], 64)
-							if err != nil || value < 0.1{
-								s.ChannelMessageSend(
-									m.ChannelID,
-									"Please input in the correct format.",
-								)
+							if err != nil {
+                log.Println(err)
 							} else {
-								investment = value
-							}
-              // if the user has chosen to sell all of their stocks, then the investment is calculated.
-						} else if args[3] == "all" {
-							stock_value := db.GetStockPrice(database, stock_name)
-							total_shares := db.GetUserShares(database, m.Author.ID, stock_name)
-							investment = db.PreciseMult(stock_value, total_shares)
+                total_investment = value
+              }
+
 						} else {
-              // the stock value is calculated and initialised into stock_value for all other inputs
+              // otherwise, the stock value is extracted by multiplying the stock value
 							stock_value := db.GetStockPrice(database, stock_name)
 							value, err := strconv.ParseFloat(args[3], 64)
-              // checking for an error, if there is no error the investment is updated.
-							if err != nil || value < 0.1{
-								s.ChannelMessageSend(m.ChannelID, "Please input in the correct format.")
+							if err != nil {
+						    log.Println(err)	
 							} else {
-								investment = db.PreciseMult(value, stock_value)
+								total_investment = value * stock_value
 							}
+
 						}
             // if the investment is valid (not == -1) then it is converted into a string 
-						if investment != -1.0 {
-							investment_string := strconv.FormatFloat(investment, 'f', 2, 64)
+						if total_investment != -1.0 {
+							investment_string := strconv.FormatFloat(total_investment, 'f', 2, 64)
 							investment_aftertax := strconv.FormatFloat(
-								investment*(1-tax),
+								total_investment*(1-tax),
 								'f',
 								2,
 								64,
@@ -385,10 +391,10 @@ func main() {
 						}
 					} else {
             // responding if the stock doesn't exist.
-						s.ChannelMessageSend(m.ChannelID, `"`+args[2]+`" stock does not exist.`)
+						s.ChannelMessageSend(m.ChannelID, response)
 					}
           
-				}
+				
       case "list":
         message := db.UserList(database, m.Author.ID)
         if message == "" {

@@ -16,7 +16,7 @@
     },
     {
         "command":"View the current state of the market",
-        "format":"!jdl shares <stock name>",
+        "format":"!jdl shares",
         "explanation":"Replies with the current value of a given stock per share. Not specifying a share will result in replying with all of the share values."
     },
     {
