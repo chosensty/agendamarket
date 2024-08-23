@@ -4,6 +4,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+  "math"
 	db "agendamarket/database"
   "agendamarket/formatcheck"
 	"log"
@@ -95,6 +96,10 @@ func main() {
 	yn_button_row := discordgo.ActionsRow{
 		Components: []discordgo.MessageComponent{yes_button, no_button},
 	}
+  leftmost_button := discordgo.Button {
+    Label: "<<",
+    CustomID: "leftmost",
+  }
 	left_button := discordgo.Button{
 		Label:    "<",
 		CustomID: "left",
@@ -103,8 +108,12 @@ func main() {
 		Label:    ">",
 		CustomID: "right",
 	}
+  rightmost_button := discordgo.Button {
+    Label: ">>",
+    CustomID: "rightmost",
+  }
 	lr_button_row := discordgo.ActionsRow{
-		Components: []discordgo.MessageComponent{left_button, right_button},
+		Components: []discordgo.MessageComponent{leftmost_button, left_button, right_button, rightmost_button},
 	}
 
 	tax, _ := strconv.ParseFloat(os.Getenv("TAX"), 64)
@@ -127,7 +136,9 @@ func main() {
 		args := strings.Split(m.Content, " ")
 
 		
-    args[0] = strings.ToLower(args[0])
+    for i, arg := range args {
+      args[i] = strings.ToLower(arg)
+    }
     // ignoring the content of the message if the command wasn't used.
     if args[0] != prefix {
 			return
@@ -142,39 +153,97 @@ func main() {
 					if err == nil {
 						cond := db.NewStock(database, args[2], price)
 						if cond {
-							s.ChannelMessageSend(
-								m.ChannelID,
-								"Add new stock "+args[2]+" with a base price of $"+args[3],
-							)
+              response := "Add new stock "+args[2]+" with a base price of $"+args[3]
+              msg := discordgo.MessageSend{
+                Content: response,
+                Reference: m.Reference(),
+              }
+						  _, err := s.ChannelMessageSendComplex(m.ChannelID, &msg)
+              
+              if err != nil {
+                log.Print(err)
+              }
+
 						}
 					}
 				}
 			case "remove":
 				if m.Author.ID == os.Getenv("ADMIN") && len(args) > 2 {
 					if db.RemoveStock(database, args[2]) {
-						s.ChannelMessageSend(m.ChannelID, "Removed stock "+args[2])
+            response := "Removed stock "+args[2]
+            msg := discordgo.MessageSend{
+              Content: response,
+              Reference: m.Reference(),
+            }
+            _, err := s.ChannelMessageSendComplex(m.ChannelID, &msg)
+            
+            if err != nil {
+              log.Print(err)
+            }
 					}
 				}
 			case "balance":
 				bal := db.BalCheck(database, m.Author.ID)
         if bal >= 0 {
-          s.ChannelMessageSend(
-            m.ChannelID,
-            "Your current balance is $"+strconv.FormatFloat(bal, 'f', 2, 64),
-          )
+          response := "Your current balance is $"+strconv.FormatFloat(bal, 'f', 2, 64)
+          msg := discordgo.MessageSend{
+            Content: response,
+            Reference: m.Reference(),
+          }
+          _, err := s.ChannelMessageSendComplex(m.ChannelID, &msg)
+            
+          if err != nil {
+            log.Print(err)
+          }
         } else {
-          s.ChannelMessageSend(m.ChannelID, "Please register as a new user using the command ```!jdl start```")
+          response := "Please register as a new user using the command !jdl register"
+          msg := discordgo.MessageSend{
+            Content: response,
+            Reference: m.Reference(),
+          }
+          _, err := s.ChannelMessageSendComplex(m.ChannelID, &msg)
+            
+          if err != nil {
+            log.Print(err)
+          }
         }
-			case "start":
+			case "register":
 				exists := db.UserExists(database, m.Author.ID)
 				if exists {
-					s.ChannelMessageSend(m.ChannelID, "You have already registered")
+					response := "You have already registered"
+          msg := discordgo.MessageSend{
+            Content: response,
+            Reference: m.Reference(),
+          }
+          _, err := s.ChannelMessageSendComplex(m.ChannelID, &msg)
+            
+          if err != nil {
+            log.Print(err)
+          }
 				} else {
 					err := db.NewUser(database, m.Author.ID, 1000)
 					if !err {
-						s.ChannelMessageSend(m.ChannelID, "You have been registered")
-					} else {
-						s.ChannelMessageSend(m.ChannelID, "Failed to register user")
+						response := "You have been registered"
+            msg := discordgo.MessageSend{
+              Content: response,
+              Reference: m.Reference(),
+            }
+            _, err := s.ChannelMessageSendComplex(m.ChannelID, &msg)
+            
+            if err != nil {
+              log.Print(err)
+            }
+          } else {
+            response := "Failed to register user"
+            msg := discordgo.MessageSend{
+              Content: response,
+              Reference: m.Reference(),
+            }
+            _, err := s.ChannelMessageSendComplex(m.ChannelID, &msg)
+            
+            if err != nil {
+              log.Print(err)
+            }
 					}
 				}
 
@@ -185,7 +254,6 @@ func main() {
         // if the format is valid, the transaction is attempted.
 				if valid {
             // extracting the stock name, the value given and the investment.
-						stock_name := args[2]
 						var total_investment float64 = -1.0
 						var money_symbol string = "$"
 						first_char := args[3][0]
@@ -200,23 +268,20 @@ func main() {
               }
 
 						} else {
-              // otherwise, the stock value is extracted by multiplying the stock value
-							stock_value := db.GetStockPrice(database, stock_name)
-							value, err := strconv.ParseFloat(args[3], 64)
-							if err != nil {
-						    log.Println(err)	
-							} else {
-								total_investment = value * stock_value
-							}
-
+              value, err := strconv.ParseFloat(args[3], 64)
+              if err != nil {
+                log.Println(err)
+              } else {
+                  total_investment = value
+              }
 						}
 
             // if the total investment is something valid (which will not be -1), the transaction goes forward.
             if total_investment != -1.0 {
-						investment := total_investment * (1 + tax)
+						investment := total_investment * (1 - tax)
 
-						investment_string := strconv.FormatFloat(investment, 'f', 2, 64)
-						investment_beforetax_string := strconv.FormatFloat(
+						investment_aftertax_string := strconv.FormatFloat(investment, 'f', 2, 64)
+						investment_string := strconv.FormatFloat(
 							total_investment,
 							'f',
 							2,
@@ -224,7 +289,7 @@ func main() {
 						)
 
 						msg := discordgo.MessageSend{
-							Content: "Are you sure you'd like to invest $" + investment_string + " into buying $" + investment_beforetax_string + " worth of " + args[2] + " stocks?",
+							Content: "Are you sure you'd like to invest $" + investment_string + " into buying $" + investment_aftertax_string + " worth of " + args[2] + " stocks?",
 							Components: []discordgo.MessageComponent{
 								yn_button_row,
 							},
@@ -247,7 +312,7 @@ func main() {
 											database,
 											m.Author.ID,
 											args[2],
-											investment_string,
+											investment_aftertax_string,
 											1,
 											tax,
 										)
@@ -278,7 +343,15 @@ func main() {
 						})
             }
 				} else {
-          s.ChannelMessageSend(m.ChannelID, response)
+          msg := discordgo.MessageSend{
+            Content: response,
+            Reference: m.Reference(),
+          }
+          _, err := s.ChannelMessageSendComplex(m.ChannelID, &msg)
+
+          if err != nil {
+            log.Print(err)
+          }
         }
 			case "sell":
         // checking of the format is valid
@@ -301,17 +374,21 @@ func main() {
                 total_investment = value
               }
 
-						} else {
+						} else if args[3] != "all" {
               // otherwise, the stock value is extracted by multiplying the stock value
 							stock_value := db.GetStockPrice(database, stock_name)
 							value, err := strconv.ParseFloat(args[3], 64)
 							if err != nil {
 						    log.Println(err)	
 							} else {
-								total_investment = value * stock_value
+                total_investment = value * stock_value
 							}
 
-						}
+						} else {
+              stock_value := db.GetStockPrice(database, stock_name)
+              user_stocks := db.GetUserShares(database, m.Author.ID, stock_name)
+              total_investment = stock_value * user_stocks
+            }
             // if the investment is valid (not == -1) then it is converted into a string 
 						if total_investment != -1.0 {
 							investment_string := strconv.FormatFloat(total_investment, 'f', 2, 64)
@@ -391,16 +468,34 @@ func main() {
 						}
 					} else {
             // responding if the stock doesn't exist.
-						s.ChannelMessageSend(m.ChannelID, response)
-					}
+						msg := discordgo.MessageSend{
+              Content: response,
+              Reference: m.Reference(),
+            }
+            _, err := s.ChannelMessageSendComplex(m.ChannelID, &msg)
+
+            if err != nil {
+              log.Print(err)
+            }
+          }
           
 				
       case "list":
         message := db.UserList(database, m.Author.ID)
+        
+        
         if message == "" {
           message = "You do not currently own any stocks."
         }
-        s.ChannelMessageSend(m.ChannelID, message)
+        msg := discordgo.MessageSend{
+          Content: message,
+          Reference: m.Reference(),
+        }
+        _, err := s.ChannelMessageSendComplex(m.ChannelID, &msg)
+
+        if err != nil {
+          log.Print(err)
+        }        
 			case "shares":
 				var stock_list [][]string
 
@@ -424,17 +519,19 @@ func main() {
 					current_index := 0
 					fieldsperembed := 10
 					stock_length := len(stock_list)
-					max_index := stock_length/fieldsperembed + 1
+					max_index := int(math.Ceil(float64(stock_length) / float64(fieldsperembed)))
 
 
           // creating a list filled with each embed field.
 					var all_fields []*discordgo.MessageEmbedField
 					for _, e := range stock_list {
-						field := &discordgo.MessageEmbedField{
-							Name:  e[0],
-							Value: "$" + e[1] + " per share",
-						}
-						all_fields = append(all_fields, field)
+            if e[1] != "" {
+              field := &discordgo.MessageEmbedField{
+                Name:  e[0],
+                Value: "$" + e[1] + " per share",
+              }
+              all_fields = append(all_fields, field)
+            }
 					}
 
           // creating the message object consisting of the embeds and the buttons.
@@ -442,6 +539,7 @@ func main() {
 						Components: []discordgo.MessageComponent{
 							lr_button_row,
 						},
+            Reference: m.Reference(),
 					}
           // making a list of each page.
 					lower_index := current_index * fieldsperembed
@@ -473,7 +571,11 @@ func main() {
                 // if the right arrow was pressed, go to the next page.
 								} else if CustomID == "right" {
 									current_index = (current_index + 1) % max_index
-								}
+								} else if CustomID == "leftmost" {
+                  current_index = 0
+                } else if CustomID == "rightmost" {
+                  current_index = max_index - 1
+                }
 								lower_index := current_index * fieldsperembed
 								upper_index := (current_index + 1) * fieldsperembed
 								if upper_index >= stock_length {
@@ -504,19 +606,29 @@ func main() {
           // if a specific stock was searched for, only the stock that was requested is returned to the user.
 				} else if db.StockExists(database, args[2]) {
 					price := db.GetStockPrice(database, args[2])
-					s.ChannelMessageSend(m.ChannelID, args[2]+" stock is worth $"+strconv.FormatFloat(price, 'f', 2, 64)+" per share")
+          response := args[1] + " stock is currently worth $" + strconv.FormatFloat(price, 'f', 2, 64)  + " per share."
+          msg := discordgo.MessageSend{
+            Content: response,
+            Reference: m.Reference(),
+          }
+          s.ChannelMessageSendComplex(m.ChannelID, &msg)
 				}
 
 			case "networth":
         // getting the networth and sending it to the user.
 				response := db.GetNetWorth(database, m.Author.ID)
-				s.ChannelMessageSend(m.ChannelID, response)
+        msg := discordgo.MessageSend{
+          Content: response,
+          Reference: m.Reference(),
+        }
+				s.ChannelMessageSendComplex(m.ChannelID, &msg)
 			case "help":
         // generating a help message and sending it.
         msg := discordgo.MessageSend{
           Embeds: []*discordgo.MessageEmbed{
             help_embed,
           },
+          Reference: m.Reference(),
         }
 				s.ChannelMessageSendComplex(m.ChannelID, &msg)
 			}
@@ -525,6 +637,7 @@ func main() {
         Embeds: []*discordgo.MessageEmbed{
           help_embed,
         },
+        Reference: m.Reference(),
       }
       s.ChannelMessageSendComplex(m.ChannelID, &msg)
     }

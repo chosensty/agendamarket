@@ -1,12 +1,12 @@
 [
     {
       "command":"Start investing",
-      "format":"!jdl start",
+      "format":"!jdl register",
       "explanation":"Registers you as a new user, you will start with $1000 and no shares of any stock. This command can only be run once."
     },
     {
         "command" : "Buy shares",
-        "format" : "!jdl buy <stock name> <number of shares>",
+        "format" : "!jdl buy <stock name> <investment>",
         "explanation" : "Purchases a given number of shares of a stock provided you have enough in your balance. \nHint: you can add a $ sign in front of the number of shares to specificy how much money you'd like to invest into a stock, rather than specifying the number of shares that you'd like to buy."
     },
     {

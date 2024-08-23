@@ -135,6 +135,7 @@ func StockTransaction(db *sql.DB, userID string, name string, price string, sign
 	if balance == -1.0 {
 		return false, "You have not registered an account."
 	}
+    
 
   // getting a floating point version of the price string.
 	price_float, err := strconv.ParseFloat(price, 64)
@@ -170,7 +171,7 @@ func StockTransaction(db *sql.DB, userID string, name string, price string, sign
 		return false, "Could not find stock " + name
 	}
 
-	sens, _ := strconv.ParseFloat(os.Getenv("global_sensitivity"), 64)
+	//sens, _ := strconv.ParseFloat(os.Getenv("global_sensitivity"), 64)
 
 	share_num := PreciseDiv(price_float, orig_price)
   if converted_sign ==1 { share_num /= 1 + tax }
@@ -188,9 +189,6 @@ func StockTransaction(db *sql.DB, userID string, name string, price string, sign
 
 	user_shares = PreciseAdd(user_shares, PreciseMult(share_num, converted_sign))
 
-	if RoundFloat(user_shares, 2) > 10 {
-		return false, "You can not own more than 10 shares of the same stock."
-	}
 
 	query = `UPDATE UserStocks SET shares=? WHERE userID=? AND stockName=?`
 
@@ -211,10 +209,26 @@ func StockTransaction(db *sql.DB, userID string, name string, price string, sign
 		log.Println(err)
 	}
 
-	stock_price := PreciseMult(orig_price, (1 + PreciseMult(sens, share_num*converted_sign)))
+	//stock_price := PreciseMult(orig_price, (1 + PreciseMult(sens, share_num*converted_sign)))
+  stock_price := orig_price
 
-	query = "UPDATE Stock SET price=? WHERE name=?"
-	_, err = db.Exec(query, stock_price, name)
+  query = `SELECT total_shares FROM Stock WHERE name=?`
+
+  var tot_shares float64
+  
+  err = db.QueryRow(query, name).Scan(&tot_shares)
+  tot_shares += share_num * converted_sign
+  if tot_shares < 0 {
+    tot_shares = 0
+  }
+  
+  if err != nil {
+    log.Print(err)
+    return false, "Error occured."
+  }
+
+	query = "UPDATE Stock SET price=?, total_shares=? WHERE name=?"
+	_, err = db.Exec(query, stock_price, tot_shares, name)
 
 	if err != nil {
 		log.Print(err)
@@ -246,8 +260,8 @@ func StockTransaction(db *sql.DB, userID string, name string, price string, sign
 
 }
 func BalCheck(db *sql.DB, ID string) float64 {
-	query := "SELECT balance FROM User WHERE userID=?"
-	var o float64
+	query := "SELECT balance FROM User WHERE userID=?" 
+  var o float64
 	err := db.QueryRow(query, ID).Scan(&o)
 	if err != nil {
 		log.Print(err)
@@ -276,7 +290,11 @@ func GetNetWorth(db *sql.DB, ID string) string {
 		db.QueryRow(query, name).Scan(&price)
 		balance += price * shares
 	}
-	output = "Your current net worth is $" + strconv.FormatFloat(balance, 'f', 2, 64)
+  if balance >= 0 {
+    output = "Your current net worth is $" + strconv.FormatFloat(balance, 'f', 2, 64)
+  } else {
+    output = "You need to register your account using !jdl register"
+  }
 	return output
 }
 func UserList(db *sql.DB, userID string) string {
